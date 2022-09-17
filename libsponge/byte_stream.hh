@@ -1,6 +1,7 @@
 #ifndef SPONGE_LIBSPONGE_BYTE_STREAM_HH
 #define SPONGE_LIBSPONGE_BYTE_STREAM_HH
 
+#include <deque>
 #include <string>
 
 //! \brief An in-order byte stream.
@@ -18,6 +19,11 @@ class ByteStream {
     // different approaches.
 
     bool _error{};  //!< Flag indicating that the stream suffered an error.
+    size_t size;
+    std::deque<char> q;
+    size_t total_written;
+    size_t total_read;
+    bool input_end;
 
   public:
     //! Construct a stream with room for `capacity` bytes.
@@ -32,10 +38,10 @@ class ByteStream {
     size_t write(const std::string &data);
 
     //! \returns the number of additional bytes that the stream has space for
-    size_t remaining_capacity() const;
+    size_t remaining_capacity() const { return size - q.size(); };
 
     //! Signal that the byte stream has reached its ending
-    void end_input();
+    void end_input() { input_end = true; };
 
     //! Indicate that the stream suffered an error.
     void set_error() { _error = true; }
@@ -56,29 +62,29 @@ class ByteStream {
     std::string read(const size_t len);
 
     //! \returns `true` if the stream input has ended
-    bool input_ended() const;
+    bool input_ended() const { return input_end; };
 
     //! \returns `true` if the stream has suffered an error
     bool error() const { return _error; }
 
     //! \returns the maximum amount that can currently be read from the stream
-    size_t buffer_size() const;
+    size_t buffer_size() const { return q.size(); };
 
     //! \returns `true` if the buffer is empty
-    bool buffer_empty() const;
+    bool buffer_empty() const { return q.empty(); };
 
     //! \returns `true` if the output has reached the ending
-    bool eof() const;
+    bool eof() const { return input_end && buffer_empty(); };
     //!@}
 
     //! \name General accounting
     //!@{
 
     //! Total number of bytes written
-    size_t bytes_written() const;
+    size_t bytes_written() const { return total_written; };
 
     //! Total number of bytes popped
-    size_t bytes_read() const;
+    size_t bytes_read() const { return total_read; };
     //!@}
 };
 

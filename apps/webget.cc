@@ -16,6 +16,26 @@ void get_URL(const string &host, const string &path) {
     // Then you'll need to print out everything the server sends back,
     // (not just one call to read() -- everything) until you reach
     // the "eof" (end of file).
+    // get_URL(cs144.keithw.org, /hasher/xyzzy)
+    TCPSocket sock;
+    sock.connect(Address(host, "http"));
+    // GET /hello HTTP/1.1
+    string url_path = string("GET ") + path;
+    url_path += " HTTP/1.1\r\n";
+    // `Host: cs144.keithw.org`
+    string url_host = "Host: " + host;
+    url_host += "\r\n";
+    string ending = "Connection: close\r\n";
+    sock.write(url_path);
+    sock.write(url_host);
+    sock.write(ending);
+    sock.write("\r\n");  // 最后也要记得加\r\n
+    string temp;
+    while (!sock.eof()) {
+        sock.read(temp);
+        cout << temp;
+        temp.clear();
+    }
 
     cerr << "Function called: get_URL(" << host << ", " << path << ").\n";
     cerr << "Warning: get_URL() has not been implemented yet.\n";
