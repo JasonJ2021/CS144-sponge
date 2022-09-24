@@ -94,7 +94,7 @@ int main() {
             test.execute(SubmitSegment{"abc", 0});
             test.execute(BytesAssembled(3));
 
-            test.execute(SubmitSegment{"bcdefgh", 1}.with_eof(true));
+            test.execute(SubmitSegment{"bcdefgh", 1}.with_eof(true));  // Bug!!!
 
             test.execute(BytesAssembled(8));
             test.execute(BytesAvailable{"abcdefgh"});

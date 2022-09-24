@@ -19,7 +19,6 @@ size_t ByteStream::write(const string &data) {
     size_t written = 0;
     while (written < data.size() && remaining_capacity() > 0) {
         q.push_back(data[written++]);
-
     }
     total_written += written;
     return written;
