@@ -19,13 +19,16 @@ class TCPReceiver {
 
     //! The maximum number of bytes we'll store.
     size_t _capacity;
+    bool syn_flag; // if syn_flag = true , then we have got the SYN 
+    bool fin_flag; // 
+    WrappingInt32 syn_no; // record the syn_seqno for unwrap
 
   public:
     //! \brief Construct a TCP receiver
     //!
     //! \param capacity the maximum number of bytes that the receiver will
     //!                 store in its buffers at any give time.
-    TCPReceiver(const size_t capacity) : _reassembler(capacity), _capacity(capacity) {}
+    TCPReceiver(const size_t capacity) : _reassembler(capacity), _capacity(capacity) , syn_flag{false} ,fin_flag{false}, syn_no{0} {}
 
     //! \name Accessors to provide feedback to the remote TCPSender
     //!@{
