@@ -44,8 +44,12 @@ uint64_t unwrap(WrappingInt32 n, WrappingInt32 isn, uint64_t checkpoint) {
     //     return ans - (1ull << 32);
     // }
     // return ans;
+    
     WrappingInt32 c = wrap(checkpoint, isn);
-    int32_t offset = n.raw_value() - c.raw_value();
+    int64_t offset = n.raw_value() - c.raw_value();
     int64_t ans = checkpoint + offset;
-    return ans >= 0 ? ans : ans + (1ul << 32);
+    if(offset > (1ll << 31) && ans >= (1ll << 32)){
+        ans = ans - (1ll << 32);
+    }
+    return ans;
 }
