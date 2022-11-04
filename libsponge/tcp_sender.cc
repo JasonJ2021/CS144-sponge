@@ -31,6 +31,7 @@ uint64_t TCPSender::bytes_in_flight() const { return _bytes_in_flight; }
 
 void TCPSender::fill_window() {
     bool has_sent = false;
+    // 进行三次握手,建立连接，在建议连接成功之前不能进行fill window
     if (!syn_set) {
         // construct the segment
         has_sent = true;
@@ -45,8 +46,10 @@ void TCPSender::fill_window() {
         // update the next_seq and in_flight_bytes
         _next_seqno += 1;
         _bytes_in_flight += syn_segment.length_in_sequence_space();
+        timer_started = true;
+        return;
     }
-    
+    // fill window
     while (cur_window_size > 0 && !_stream.buffer_empty()) {
         has_sent = true;
         TCPSegment send_segment;
@@ -71,10 +74,12 @@ void TCPSender::fill_window() {
         // update the in_flight_bytes
         _bytes_in_flight += send_segment.length_in_sequence_space();
     }
+
     // For fin
+    // flag用于查看是否有空间可以进行fin发送
     bool flag = this->_outstanding_segments.empty();
     if(!flag){
-        uint64_t ackno_abs = unwrap(this->_outstanding_segments.back().header().seqno, this->_isn, this->next_seqno_absolute());
+        uint64_t ackno_abs = unwrap(this->_outstanding_segments.back().header().seqno, this->_isn, this->next_seqno_absolute()) + this->_outstanding_segments.back().length_in_sequence_space();
         if(ackno_abs + cur_window_size > this->_next_seqno){
             flag = true;
         }
@@ -102,17 +107,26 @@ void TCPSender::fill_window() {
 //! \param window_size The remote receiver's advertised window size
 void TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_size) {
     // set cur_windows_size and ackno_abs
+    // 这里来检查ackno是否有效
+    // 有效的定义 <= _next_seqno 同时 >= 发出去还没acked segment的index
     uint64_t ackno_abs = unwrap(ackno, this->_isn, this->next_seqno_absolute());
     if(ackno_abs > this->_next_seqno){
         return;
     }
+    if(!_outstanding_segments.empty()){
+        if(ackno_abs < unwrap(_outstanding_segments.front().header().seqno , this->_isn , _next_seqno)){
+            return;
+        }
+    }
     cur_window_size = window_size;
+    // 这里检查给我们的是否是一个window_size = 0 的值
     if(window_size == 0){
         non_zero_window = false;
     }else{
         non_zero_window = true;
     }
     bool new_data_acked = false;
+    // 把所有fully acked segment踢出outstanding队列
     while (!this->_outstanding_segments.empty()) {
         uint64_t seg_seqno_unwrapped =
             unwrap(this->_outstanding_segments.front().header().seqno, this->_isn, this->next_seqno_absolute());
@@ -125,6 +139,7 @@ void TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_si
             break;
         }
     }
+    // 如果有新的data acked，我们需要重启timer(如果当前还有segment in flight)，并且恢复conse_retran , rto
     if (new_data_acked) {
         this->_cur_RTO = this->_initial_retransmission_timeout;
         if (!this->_outstanding_segments.empty()) {
@@ -133,7 +148,7 @@ void TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_si
         }
         this->_consecutive_retransmissions = 0;
     }
-
+    // 当前outstanding队列中没有segment，可以停止计时
     if (this->_outstanding_segments.empty()) {
         // ALL outstanding segments acked -> stop the timer
         this->timer_started = false;
@@ -141,9 +156,19 @@ void TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_si
         this->_cur_RTO = this->_initial_retransmission_timeout;
         this->_consecutive_retransmissions = 0;
     }
-    // for cur_windows = 0 , assume to be 1 , 考虑此事_stream.buffer_empty() = true，是否应该发送fin?
+    // 检查我们能够发送的window_size
+    if(!this->_outstanding_segments.empty()){
+        int64_t free_space = ackno_abs + static_cast<uint64_t>(window_size) - unwrap(this->_outstanding_segments.front().header().seqno , this->_isn , _next_seqno) - _bytes_in_flight;
+        if(free_space >= 0 ){
+            cur_window_size = static_cast<size_t>(free_space);
+        }else{
+            cur_window_size = 0;
+        }
+    }
+    // 在这里进行对window_size = 0 的处理
+    // for cur_windows = 0 , assume to be 1 , 考虑此时_stream.buffer_empty() = true，是否应该发送fin?
     bool flag = _stream.eof() && _stream.buffer_size() == 0 && !fin_set;
-    if(cur_window_size == 0 && (!_stream.buffer_empty() || flag)){
+    if(!non_zero_window && cur_window_size == 0 && (!_stream.buffer_empty() || flag)){
         this->timer_started = true;
         TCPSegment send_segment;
         send_segment.header().seqno = next_seqno();
@@ -174,6 +199,7 @@ void TCPSender::tick(const size_t ms_since_last_tick) {
         time_elapsed += ms_since_last_tick;
         if (time_elapsed >= _cur_RTO) {
             this->_segments_out.push(this->_outstanding_segments.front());
+            // 主要在这里zero_window是不会使得rto乘背的
             if (non_zero_window || this->_outstanding_segments.front().header().syn) {
                 this->_consecutive_retransmissions++;
                 _cur_RTO = 2 * _cur_RTO;
