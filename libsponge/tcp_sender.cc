@@ -41,11 +41,12 @@ void TCPSender::fill_window() {
         this->_segments_out.emplace(syn_segment);
         this->_outstanding_segments.emplace(syn_segment);
         syn_set = true;
-        // cur_window_size--;
+        cur_window_size--;
         // update the next_seq and in_flight_bytes
         _next_seqno += 1;
         _bytes_in_flight += syn_segment.length_in_sequence_space();
     }
+    
     while (cur_window_size > 0 && !_stream.buffer_empty()) {
         has_sent = true;
         TCPSegment send_segment;
@@ -70,19 +71,28 @@ void TCPSender::fill_window() {
         // update the in_flight_bytes
         _bytes_in_flight += send_segment.length_in_sequence_space();
     }
-    // if (_stream.eof() && _stream.buffer_size() == 0 && cur_window_size > 0 && !fin_set) {
-    //     // send fin segment
-    //     TCPSegment send_segment;
-    //     send_segment.header().seqno = next_seqno();
-    //     send_segment.header().fin = true;
+    // For fin
+    bool flag = this->_outstanding_segments.empty();
+    if(!flag){
+        uint64_t ackno_abs = unwrap(this->_outstanding_segments.back().header().seqno, this->_isn, this->next_seqno_absolute());
+        if(ackno_abs + cur_window_size > this->_next_seqno){
+            flag = true;
+        }
+    } 
+    if ( flag && _stream.eof() && _stream.buffer_size() == 0 && cur_window_size > 0 && !fin_set) {
+        // send fin segment
+        TCPSegment send_segment;
+        send_segment.header().seqno = next_seqno();
+        send_segment.header().fin = true;
 
-    //     _next_seqno += 1;
-    //     _bytes_in_flight += send_segment.length_in_sequence_space();
-    //     cur_window_size--;
-    //     fin_set = true;
-    //     this->_segments_out.emplace(send_segment);
-    //     this->_outstanding_segments.emplace(send_segment);
-    // }
+        _next_seqno += 1;
+        _bytes_in_flight += send_segment.length_in_sequence_space();
+        cur_window_size--;
+        fin_set = true;
+        has_sent = true;
+        this->_segments_out.emplace(send_segment);
+        this->_outstanding_segments.emplace(send_segment);
+    }
     if (has_sent) {
         timer_started = true;
     }
@@ -97,6 +107,11 @@ void TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_si
         return;
     }
     cur_window_size = window_size;
+    if(window_size == 0){
+        non_zero_window = false;
+    }else{
+        non_zero_window = true;
+    }
     bool new_data_acked = false;
     while (!this->_outstanding_segments.empty()) {
         uint64_t seg_seqno_unwrapped =
@@ -126,20 +141,31 @@ void TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_si
         this->_cur_RTO = this->_initial_retransmission_timeout;
         this->_consecutive_retransmissions = 0;
     }
-    fill_window();
-    if (_stream.eof() && _stream.buffer_size() == 0 && cur_window_size > 0 && !fin_set) {
-        // send fin segment
+    // for cur_windows = 0 , assume to be 1 , 考虑此事_stream.buffer_empty() = true，是否应该发送fin?
+    bool flag = _stream.eof() && _stream.buffer_size() == 0 && !fin_set;
+    if(cur_window_size == 0 && (!_stream.buffer_empty() || flag)){
+        this->timer_started = true;
         TCPSegment send_segment;
         send_segment.header().seqno = next_seqno();
-        send_segment.header().fin = true;
-
-        _next_seqno += 1;
-        _bytes_in_flight += send_segment.length_in_sequence_space();
-        cur_window_size--;
-        fin_set = true;
+        // construct the segment
+        size_t payload_len = 1;
+        if(flag){
+            send_segment.header().fin = true;
+            fin_set = true;
+        }else{
+            send_segment.payload() = Buffer(_stream.peek_output(payload_len));
+            _stream.pop_output(payload_len);
+        }
+        
+        // push the segment to outstanding and out queue
         this->_segments_out.emplace(send_segment);
         this->_outstanding_segments.emplace(send_segment);
+        // update the next_seq
+        _next_seqno += payload_len;
+        // update the in_flight_bytes
+        _bytes_in_flight += send_segment.length_in_sequence_space();
     }
+    fill_window();
 }
 
 //! \param[in] ms_since_last_tick the number of milliseconds since the last call to this method
@@ -148,7 +174,7 @@ void TCPSender::tick(const size_t ms_since_last_tick) {
         time_elapsed += ms_since_last_tick;
         if (time_elapsed >= _cur_RTO) {
             this->_segments_out.push(this->_outstanding_segments.front());
-            if (cur_window_size > 0) {
+            if (non_zero_window || this->_outstanding_segments.front().header().syn) {
                 this->_consecutive_retransmissions++;
                 _cur_RTO = 2 * _cur_RTO;
             }

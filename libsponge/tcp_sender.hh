@@ -41,6 +41,7 @@ class TCPSender {
     size_t time_elapsed{0};
     bool timer_started{false};
     bool fin_set{false};
+    bool non_zero_window{false};
   public: 
     //! Initialize a TCPSender
     TCPSender(const size_t capacity = TCPConfig::DEFAULT_CAPACITY,
