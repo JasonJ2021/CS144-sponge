@@ -31,8 +31,17 @@ class TCPSender {
 
     //! the (absolute) sequence number for the next byte to be sent
     uint64_t _next_seqno{0};
-
-  public:
+    uint64_t _bytes_in_flight;
+    std::queue<TCPSegment> _outstanding_segments;
+    size_t cur_window_size;
+    bool syn_set{false};
+    // timer variables
+    unsigned int _consecutive_retransmissions{0};
+    unsigned int _cur_RTO;
+    size_t time_elapsed{0};
+    bool timer_started{false};
+    bool fin_set{false};
+  public: 
     //! Initialize a TCPSender
     TCPSender(const size_t capacity = TCPConfig::DEFAULT_CAPACITY,
               const uint16_t retx_timeout = TCPConfig::TIMEOUT_DFLT,
