@@ -22,7 +22,7 @@ size_t TCPConnection::unassembled_bytes() const { return _receiver.unassembled_b
 size_t TCPConnection::time_since_last_segment_received() const { return _time_since_last_segment_received; }
 
 void TCPConnection::try_send(){
-    if(!_sender.segments_out().empty()){
+    while(!_sender.segments_out().empty()){
         TCPSegment &segment_sent = _sender.segments_out().front();
         _sender.segments_out().pop();
         // 携带上ackno & ACK flags
@@ -121,7 +121,7 @@ void TCPConnection::tick(const size_t ms_since_last_tick) {
     try_send();
     _time_since_last_segment_received += ms_since_last_tick;
     // 重传次数超过max_retx_attempts -> abort the connection
-    if (_sender.consecutive_retransmissions() >= TCPConfig::MAX_RETX_ATTEMPTS) {
+    if (_sender.consecutive_retransmissions() > TCPConfig::MAX_RETX_ATTEMPTS) {
         // abort the connection and send a reset segment to the peer
         _sender.stream_in().set_error();
         _receiver.stream_out().set_error();
@@ -131,8 +131,11 @@ void TCPConnection::tick(const size_t ms_since_last_tick) {
         TCPSegment &segment_sent = _sender.segments_out().front();
         _sender.segments_out().pop();
         segment_sent.header().rst = true;
-
+        while(!_segments_out.empty()){
+            _segments_out.pop();
+        }
         _segments_out.push(segment_sent);
+        try_send();
     }
     // Or cleanly end the connection
     // 满足PREQ 1~3并且_linger = false 时，cleanDone

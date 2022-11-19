@@ -77,7 +77,7 @@ void StreamReassembler::push_substring(const string &data, const uint64_t index,
 
 void StreamReassembler::mergeTo_output(){
     while(_bitmap.front()){
-        _output.write(_buffer.front());
+       _output.write(_buffer.front());
         _unass_bytes -= 1;
         index_unass += 1;
         _bitmap.pop_front();
