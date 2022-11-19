@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <map>
 #include <string>
+#include <deque>
 
 //! \brief A class that assembles a series of excerpts from a byte stream (possibly out of order,
 //! possibly overlapping) into an in-order byte stream.
@@ -15,11 +16,12 @@ class StreamReassembler {
 
     ByteStream _output;                    //!< The reassembled in-order byte stream
     size_t _capacity;                      //!< The maximum number of bytes
-    std::map<uint64_t, std::string> map_;  // 维护一个index -> string的map
-    uint64_t index_unass;                  //维护下一个放到output_bytestream中string的index
-    bool eof_mark;
-    uint64_t end_index;
-    void insert_map(const std::string &data, const uint64_t index);
+    std::deque<char> _buffer;              // maintain a non-overlapping string buffer
+    std::deque<bool> _bitmap;              // bitmap，标志buffer中各个位是否有效
+    uint64_t index_unass{0};                  // 维护下一个放到output_bytestream中string的index
+    bool eof_mark{false};
+    size_t _unass_bytes{0};
+    void mergeTo_output();                 // 
 
   public:
     //! \brief Construct a `StreamReassembler` that will store up to `capacity` bytes.

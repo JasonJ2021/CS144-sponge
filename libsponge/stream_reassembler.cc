@@ -15,65 +15,80 @@ using namespace std;
 StreamReassembler::StreamReassembler(const size_t capacity)
     : _output(capacity)
     , _capacity(capacity)
-    , map_{}
-    , index_unass(0)
-    , eof_mark{false}
-    , end_index{0} {}
-
+    , _buffer(capacity , '\0')
+    , _bitmap(capacity , false)
+    {}
 //! \details This function accepts a substring (aka a segment) of bytes,
 //! possibly out-of-order, from the logical stream, and assembles any newly
 //! contiguous substrings and writes them into the output stream in order.
 void StreamReassembler::push_substring(const string &data, const uint64_t index, const bool eof) {
-    if (eof) {
-        eof_mark = true;
-        end_index = index + data.size();
-    }
-    
-    if (index > index_unass) {
-        insert_map(data, index);
-    } else if (index <= index_unass && index + data.size() >= index_unass) {
-        // 合并，写入到output stream中
-        insert_map(data, index);
-        auto it = map_.begin();
-        for (; it != map_.end(); it++) {
-            if (it->first <= index_unass) {
-                if (it->first + it->second.size() <= index_unass) {
-                    continue;
-                }
-                uint64_t writable = it->first + it->second.size() - index_unass;
-                index_unass += _output.write(it->second.substr(index_unass - it->first, writable));
-            } else {
-                break;  // 超过了合并的界限
-            }
+    if(index + data.size() <= index_unass){
+        // invalid string
+        if(eof){
+            eof_mark = true;
         }
-        map_.erase(map_.begin(), it);
-        if (eof_mark && index_unass >= end_index) {
+        if (eof_mark && empty()) {
             _output.end_input();
         }
+        return;
     }
-}
-
-void StreamReassembler::insert_map(const string &data, const uint64_t index) {
-    if (map_[index].size() < data.size()) {
-        map_[index] = data;
+    if(index >= index_unass + _capacity){
+        return;
     }
-}
-
-size_t StreamReassembler::unassembled_bytes() const { 
-    uint64_t total = 0;
-    uint64_t left = 0 , right = 0;
-    for(auto i = map_.begin() ; i != map_.end() ;i++){
-        if(i == map_.begin()){
-            left = i->first;
-            right = i->second.size() + left;
-            total += right - left;
-        }else{
-            left = std::max(right , i->first);
-            right = std::max(right , i->first + i->second.size());
-            total += right - left;
+    if(eof){
+        eof_mark = true;
+    }
+    if(index < index_unass){
+        // index --- unass_bytes -- index + data.size()
+        size_t offset = index_unass - index;
+        size_t bytes_actual_written = std::min(data.size()-offset , _capacity - _output.buffer_size() - _unass_bytes); // PROBLEM
+        if(offset + bytes_actual_written != data.size() && eof){
+            eof_mark = false;
         }
+        for(size_t i = 0 ; i < bytes_actual_written ; i++){
+            if(_bitmap[i]){
+                continue;
+            }
+            _unass_bytes += 1;
+            _bitmap[i] = true;
+            _buffer[i] = data[i + offset];
+        } 
+    }else{
+        size_t offset = index - index_unass;
+        size_t bytes_actual_written = std::min(data.size() , _capacity - _output.buffer_size() - offset); // PROBLEM
+        if(bytes_actual_written != data.size() && eof){
+            eof_mark = false;
+        }
+        for(size_t i = 0 ; i < bytes_actual_written ; i++){
+            if(_bitmap[i + offset]){
+                continue;
+            }
+            _unass_bytes += 1;
+            _bitmap[i + offset] = true;
+            _buffer[i + offset] = data[i];
+        } 
     }
-    return total;
+    mergeTo_output();
+    if (eof_mark && empty()) {
+        _output.end_input();
+    }
+
 }
 
-bool StreamReassembler::empty() const { return map_.empty(); }
+void StreamReassembler::mergeTo_output(){
+    while(_bitmap.front()){
+        _output.write(_buffer.front());
+        _unass_bytes -= 1;
+        index_unass += 1;
+        _bitmap.pop_front();
+        _buffer.pop_front();
+        _bitmap.push_back(false);
+        _buffer.push_back('\0');
+    }
+}
+size_t StreamReassembler::unassembled_bytes() const{
+    return  _unass_bytes;
+}
+bool StreamReassembler::empty() const {
+    return _unass_bytes == 0;
+}

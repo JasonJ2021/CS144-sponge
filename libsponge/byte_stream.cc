@@ -23,6 +23,15 @@ size_t ByteStream::write(const string &data) {
     total_written += written;
     return written;
 }
+size_t ByteStream::write(const char data) {
+    size_t written = 0;
+    if (remaining_capacity() > 0) {
+        written += 1;
+        q.push_back(data);
+    }
+    total_written += written;
+    return written;
+}
 
 //! \param[in] len bytes will be copied from the output side of the buffer
 string ByteStream::peek_output(const size_t len) const {

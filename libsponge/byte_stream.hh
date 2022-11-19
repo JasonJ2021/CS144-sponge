@@ -86,6 +86,7 @@ class ByteStream {
     //! Total number of bytes popped
     size_t bytes_read() const { return total_read; };
     //!@}
+    size_t write(const char data);
 };
 
 #endif  // SPONGE_LIBSPONGE_BYTE_STREAM_HH
