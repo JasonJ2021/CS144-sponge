@@ -21,8 +21,8 @@ size_t TCPConnection::unassembled_bytes() const { return _receiver.unassembled_b
 
 size_t TCPConnection::time_since_last_segment_received() const { return _time_since_last_segment_received; }
 
-void TCPConnection::try_send(){
-    while(!_sender.segments_out().empty()){
+void TCPConnection::try_send() {
+    while (!_sender.segments_out().empty()) {
         TCPSegment &segment_sent = _sender.segments_out().front();
         _sender.segments_out().pop();
         // 携带上ackno & ACK flags
@@ -131,7 +131,7 @@ void TCPConnection::tick(const size_t ms_since_last_tick) {
         TCPSegment &segment_sent = _sender.segments_out().front();
         _sender.segments_out().pop();
         segment_sent.header().rst = true;
-        while(!_segments_out.empty()){
+        while (!_segments_out.empty()) {
             _segments_out.pop();
         }
         _segments_out.push(segment_sent);
@@ -148,7 +148,7 @@ void TCPConnection::tick(const size_t ms_since_last_tick) {
     }
 }
 
-void TCPConnection::end_input_stream() { 
+void TCPConnection::end_input_stream() {
     _sender.stream_in().end_input();
     // 尝试发送 fin
     _sender.fill_window();
@@ -181,6 +181,19 @@ TCPConnection::~TCPConnection() {
             cerr << "Warning: Unclean shutdown of TCPConnection\n";
 
             // Your code here: need to send a RST segment to the peer
+            _sender.stream_in().set_error();
+            _receiver.stream_out().set_error();
+            // 发送reset segment
+            _sender.send_empty_segment();
+            TCPSegment &segment_sent = _sender.segments_out().front();
+            _sender.segments_out().pop();
+            segment_sent.header().rst = true;
+            while (!_segments_out.empty()) {
+                _segments_out.pop();
+            }
+            _segments_out.push(segment_sent);
+            try_send();
+            is_active = false;
         }
     } catch (const exception &e) {
         std::cerr << "Exception destructing TCP FSM: " << e.what() << std::endl;

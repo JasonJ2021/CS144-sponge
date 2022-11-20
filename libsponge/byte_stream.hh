@@ -3,6 +3,7 @@
 
 #include <deque>
 #include <string>
+#include "buffer.hh"
 
 //! \brief An in-order byte stream.
 
@@ -19,8 +20,8 @@ class ByteStream {
     // different approaches.
 
     bool _error{};  //!< Flag indicating that the stream suffered an error.
-    size_t size;
-    std::deque<char> q;
+    size_t _capacity;
+    BufferList _buffer;
     size_t total_written;
     size_t total_read;
     bool input_end;
@@ -38,7 +39,7 @@ class ByteStream {
     size_t write(const std::string &data);
 
     //! \returns the number of additional bytes that the stream has space for
-    size_t remaining_capacity() const { return size - q.size(); };
+    size_t remaining_capacity() const { return _capacity - _buffer.size(); };
 
     //! Signal that the byte stream has reached its ending
     void end_input() { input_end = true; };
@@ -68,10 +69,10 @@ class ByteStream {
     bool error() const { return _error; }
 
     //! \returns the maximum amount that can currently be read from the stream
-    size_t buffer_size() const { return q.size(); };
+    size_t buffer_size() const { return _buffer.size(); };
 
     //! \returns `true` if the buffer is empty
-    bool buffer_empty() const { return q.empty(); };
+    bool buffer_empty() const { return _buffer.size() == 0; };
 
     //! \returns `true` if the output has reached the ending
     bool eof() const { return input_end && buffer_empty(); };
@@ -86,7 +87,7 @@ class ByteStream {
     //! Total number of bytes popped
     size_t bytes_read() const { return total_read; };
     //!@}
-    size_t write(const char data);
+    // size_t write(const char data);
 };
 
 #endif  // SPONGE_LIBSPONGE_BYTE_STREAM_HH
