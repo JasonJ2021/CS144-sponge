@@ -17,7 +17,7 @@ void get_URL(const string &host, const string &path) {
     // (not just one call to read() -- everything) until you reach
     // the "eof" (end of file).
     // get_URL(cs144.keithw.org, /hasher/xyzzy)
-    CS144TCPSocket sock;
+    FullStackSocket sock;
     sock.connect(Address(host, "http"));
     // GET /hello HTTP/1.1
     string url_path = string("GET ") + path;

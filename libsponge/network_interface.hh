@@ -7,7 +7,10 @@
 
 #include <optional>
 #include <queue>
-
+#include <deque>
+#include <unordered_map>
+#define FIVE_SECONDS 5000
+#define THIRTY_SECONDS 30000
 //! \brief A "network interface" that connects IP (the internet layer, or network layer)
 //! with Ethernet (the network access layer, or link layer).
 
@@ -40,6 +43,15 @@ class NetworkInterface {
     //! outbound queue of Ethernet frames that the NetworkInterface wants sent
     std::queue<EthernetFrame> _frames_out{};
 
+    // added member variables
+    // 记录ip -> {time , ethernet}的映射表 , time用来记录在table中的存活时间
+    // 只能存活30s
+    std::unordered_map<uint32_t , std::pair<size_t , EthernetAddress>> _ip_2_ethernet{};
+
+    // 记录ip -> {time , queue<datagram>(待发送的datagram)} ; 
+    // 如果 time在5秒以内，不需要重新发送ARP
+    std::unordered_map<uint32_t , std::pair<size_t , std::deque<InternetDatagram>>> _ip_2_waitDatagram{};
+
   public:
     //! \brief Construct a network interface with given Ethernet (network-access-layer) and IP (internet-layer) addresses
     NetworkInterface(const EthernetAddress &ethernet_address, const Address &ip_address);
@@ -62,6 +74,8 @@ class NetworkInterface {
 
     //! \brief Called periodically when time elapses
     void tick(const size_t ms_since_last_tick);
+
+    void send_arp_request(uint32_t next_hop_ip);
 };
 
 #endif  // SPONGE_LIBSPONGE_NETWORK_INTERFACE_HH
