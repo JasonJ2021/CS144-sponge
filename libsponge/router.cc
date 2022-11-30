@@ -31,12 +31,38 @@ void Router::add_route(const uint32_t route_prefix,
 
     DUMMY_CODE(route_prefix, prefix_length, next_hop, interface_num);
     // Your code here.
+    route_entry entry{route_prefix , prefix_length,next_hop,interface_num};
+    route_table.push_back(entry);
 }
 
 //! \param[in] dgram The datagram to be routed
 void Router::route_one_datagram(InternetDatagram &dgram) {
     DUMMY_CODE(dgram);
     // Your code here.
+    if(dgram.header().ttl <= 1){
+        return;
+    }
+    uint32_t dgram_ip_dst = dgram.header().dst;
+    size_t match_index = 0;
+    uint8_t match_length = 0;
+    bool matched = false;
+    for(size_t i = 0 ; i < route_table.size(); i++){
+        auto &entry = route_table[i];
+        if((dgram_ip_dst >> (32 - entry.prefix_length)) == (entry.route_prefix >> (32 - entry.prefix_length))
+            || entry.prefix_length == 0
+        ){
+            matched = true;
+            if(entry.prefix_length > match_length){
+                match_index = i;
+                match_length = entry.prefix_length;
+            }
+        }
+    }
+    if(!matched)return;
+    dgram.header().ttl -= 1;
+    auto& match_entry = route_table[match_index];
+    Address next_hop = match_entry.next_hop == std::nullopt ? Address::from_ipv4_numeric(dgram_ip_dst) : match_entry.next_hop.value();
+    _interfaces[match_entry.interface_num].send_datagram(dgram , next_hop);
 }
 
 void Router::route() {
